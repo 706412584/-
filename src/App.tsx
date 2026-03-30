@@ -5,7 +5,7 @@
 
 import React, { useState, useRef } from "react";
 import { GoogleGenAI, Type } from "@google/genai";
-import { Upload, Sparkles, RefreshCw, Shirt, Briefcase, PartyPopper, Image as ImageIcon, Loader2, Languages } from "lucide-react";
+import { Upload, Sparkles, RefreshCw, Shirt, Briefcase, PartyPopper, Image as ImageIcon, Loader2, Languages, Share2, Twitter, Facebook, Download, X, ShoppingCart, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 // Initialize AI
@@ -41,6 +41,16 @@ const translations = {
     contact: "联系我们",
     footerDesc: "由 Gemini AI 提供支持。为您量身定制。",
     visualizingSmall: "生成中...",
+    share: "分享",
+    shareTitle: "分享搭配",
+    shareDesc: "将这套搭配分享到社交媒体",
+    download: "下载图片",
+    close: "关闭",
+    items: "搭配单品",
+    estPrice: "预估",
+    taobao: "淘宝",
+    jd: "京东",
+    pdd: "拼多多",
   },
   en: {
     title: "Virtual Stylist",
@@ -69,14 +79,31 @@ const translations = {
     contact: "Contact",
     footerDesc: "Powered by Gemini AI. Styled for you.",
     visualizingSmall: "Visualizing...",
+    share: "Share",
+    shareTitle: "Share Outfit",
+    shareDesc: "Share this outfit to your social media",
+    download: "Download Image",
+    close: "Close",
+    items: "Outfit Items",
+    estPrice: "Est.",
+    taobao: "Taobao",
+    jd: "JD.com",
+    pdd: "Pinduoduo",
   }
 };
+
+interface ClothingItem {
+  name: string;
+  estimatedPrice: number;
+  searchKeyword: string;
+}
 
 interface Outfit {
   type: "Casual" | "Business" | "Night Out";
   description: string;
   imagePrompt: string;
   imageUrl?: string;
+  items: ClothingItem[];
 }
 
 interface AnalysisResult {
@@ -91,6 +118,7 @@ export default function App() {
   const [loadingStep, setLoadingStep] = useState<string>("");
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [sharingOutfit, setSharingOutfit] = useState<Outfit | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const t = translations[lang];
@@ -114,6 +142,27 @@ export default function App() {
       setError(null);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleShare = (platform: string, outfit: Outfit) => {
+    const text = `${t.lookTitle.replace("{type}", getTypeName(outfit.type))}\n\n${outfit.description}\n\nStyled by Virtual Stylist!`;
+    const url = window.location.href;
+
+    if (platform === 'twitter') {
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`);
+    } else if (platform === 'facebook') {
+      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`);
+    } else if (platform === 'pinterest') {
+      window.open(`https://pinterest.com/pin/create/button/?url=${encodeURIComponent(url)}&description=${encodeURIComponent(text)}`);
+    }
+  };
+
+  const handleDownload = (outfit: Outfit) => {
+    if (!outfit.imageUrl) return;
+    const a = document.createElement('a');
+    a.href = outfit.imageUrl;
+    a.download = `virtual-stylist-${outfit.type.toLowerCase().replace(' ', '-')}.png`;
+    a.click();
   };
 
   const generateOutfits = async () => {
@@ -141,8 +190,11 @@ export default function App() {
               },
               {
                 text: `Analyze this clothing item. Identify its color palette, style, and type. Suggest 3 complete outfits featuring this item: 1. Casual, 2. Business, 3. Night Out. 
-                IMPORTANT: Provide the 'description' for each outfit in ${lang === 'zh' ? 'Chinese' : 'English'}.
-                For each outfit, provide a detailed description of the other pieces (shoes, accessories, tops/bottoms) and a prompt for generating a clean flat-lay image of the entire outfit including the original item. The flat-lay should be on a neutral background.`,
+                IMPORTANT: Provide the 'description' and item 'name's in ${lang === 'zh' ? 'Chinese' : 'English'}.
+                For each outfit, provide:
+                1. A detailed description of the overall look.
+                2. A prompt for generating a clean flat-lay image of the entire outfit.
+                3. A list of 'items' (shoes, accessories, tops/bottoms) needed to complete the look (excluding the uploaded item). For each item, provide its name, a realistic estimated price in RMB (number only), and a highly specific search keyword IN CHINESE (for Taobao/JD/Pinduoduo).`,
               },
             ],
           },
@@ -161,8 +213,20 @@ export default function App() {
                     type: { type: Type.STRING, enum: ["Casual", "Business", "Night Out"] },
                     description: { type: Type.STRING },
                     imagePrompt: { type: Type.STRING },
+                    items: {
+                      type: Type.ARRAY,
+                      items: {
+                        type: Type.OBJECT,
+                        properties: {
+                          name: { type: Type.STRING },
+                          estimatedPrice: { type: Type.NUMBER },
+                          searchKeyword: { type: Type.STRING },
+                        },
+                        required: ["name", "estimatedPrice", "searchKeyword"],
+                      },
+                    },
                   },
-                  required: ["type", "description", "imagePrompt"],
+                  required: ["type", "description", "imagePrompt", "items"],
                 },
               },
             },
@@ -388,12 +452,69 @@ export default function App() {
                     </div>
                   </div>
                   <div className="p-8">
-                    <h4 className="text-xl font-medium mb-4 flex items-center gap-2">
-                      {t.lookTitle.replace("{type}", getTypeName(outfit.type))}
-                    </h4>
+                    <div className="flex items-start justify-between mb-4">
+                      <h4 className="text-xl font-medium flex items-center gap-2">
+                        {t.lookTitle.replace("{type}", getTypeName(outfit.type))}
+                      </h4>
+                      {outfit.imageUrl && (
+                        <button 
+                          onClick={() => setSharingOutfit(outfit)}
+                          className="p-2 text-[#666] hover:text-[#1A1A1A] hover:bg-[#F3F1ED] rounded-full transition-colors"
+                          title={t.share}
+                        >
+                          <Share2 size={18} />
+                        </button>
+                      )}
+                    </div>
                     <p className="text-[#666] text-sm leading-relaxed">
                       {outfit.description}
                     </p>
+                    
+                    {outfit.items && outfit.items.length > 0 && (
+                      <div className="mt-6 pt-6 border-t border-[#E5E1DA]">
+                        <h5 className="text-sm font-semibold uppercase tracking-wider text-[#1A1A1A] mb-4 flex items-center gap-2">
+                          <ShoppingCart size={16} /> {t.items}
+                        </h5>
+                        <div className="space-y-3">
+                          {outfit.items.map((item, i) => (
+                            <div key={i} className="flex flex-col gap-2 p-3 bg-[#F9F8F6] rounded-xl border border-[#E5E1DA]/50">
+                              <div className="flex justify-between items-start">
+                                <span className="font-medium text-[#1A1A1A] text-sm">{item.name}</span>
+                                <span className="text-[#E65100] font-semibold text-sm whitespace-nowrap ml-2">
+                                  ¥{item.estimatedPrice} <span className="text-xs text-[#999] font-normal">({t.estPrice})</span>
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-2 mt-1">
+                                <a 
+                                  href={`https://s.taobao.com/search?q=${encodeURIComponent(item.searchKeyword)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] font-medium px-2.5 py-1 bg-[#FF5000]/10 text-[#FF5000] rounded-md hover:bg-[#FF5000]/20 transition-colors flex items-center gap-1"
+                                >
+                                  {t.taobao} <ExternalLink size={10} />
+                                </a>
+                                <a 
+                                  href={`https://search.jd.com/Search?keyword=${encodeURIComponent(item.searchKeyword)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] font-medium px-2.5 py-1 bg-[#E1251B]/10 text-[#E1251B] rounded-md hover:bg-[#E1251B]/20 transition-colors flex items-center gap-1"
+                                >
+                                  {t.jd} <ExternalLink size={10} />
+                                </a>
+                                <a 
+                                  href={`https://mobile.yangkeduo.com/search_result.html?search_key=${encodeURIComponent(item.searchKeyword)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] font-medium px-2.5 py-1 bg-[#E02E24]/10 text-[#E02E24] rounded-md hover:bg-[#E02E24]/20 transition-colors flex items-center gap-1"
+                                >
+                                  {t.pdd} <ExternalLink size={10} />
+                                </a>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               ))}
@@ -413,6 +534,88 @@ export default function App() {
             </button>
           </div>
         )}
+
+        {/* Share Modal */}
+        <AnimatePresence>
+          {sharingOutfit && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
+              onClick={() => setSharingOutfit(null)}
+            >
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl"
+              >
+                <div className="p-6 border-b border-[#E5E1DA] flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-semibold">{t.shareTitle}</h3>
+                    <p className="text-sm text-[#666]">{t.shareDesc}</p>
+                  </div>
+                  <button 
+                    onClick={() => setSharingOutfit(null)}
+                    className="p-2 text-[#999] hover:text-[#1A1A1A] hover:bg-[#F3F1ED] rounded-full transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+                
+                <div className="p-6">
+                  <div className="aspect-square rounded-2xl overflow-hidden mb-6 bg-[#F3F1ED]">
+                    <img 
+                      src={sharingOutfit.imageUrl} 
+                      alt={sharingOutfit.type} 
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <button 
+                      onClick={() => handleShare('twitter', sharingOutfit)}
+                      className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#F3F1ED] hover:bg-[#E5E1DA] transition-colors font-medium text-[#1A1A1A]"
+                    >
+                      <Twitter size={18} /> Twitter
+                    </button>
+                    <button 
+                      onClick={() => handleShare('facebook', sharingOutfit)}
+                      className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#F3F1ED] hover:bg-[#E5E1DA] transition-colors font-medium text-[#1A1A1A]"
+                    >
+                      <Facebook size={18} /> Facebook
+                    </button>
+                  </div>
+                  
+                  <button 
+                    onClick={() => handleShare('pinterest', sharingOutfit)}
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#F3F1ED] hover:bg-[#E5E1DA] transition-colors font-medium text-[#1A1A1A] mb-6"
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.162-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.099.12.112.225.085.345-.09.375-.293 1.199-.334 1.363-.053.225-.172.271-.401.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.354-.629-2.758-1.379l-.749 2.848c-.269 1.045-1.004 2.352-1.498 3.146 1.123.345 2.306.535 3.55.535 6.607 0 11.985-5.365 11.985-11.987C23.97 5.367 18.624 0 12.017 0z"/>
+                    </svg>
+                    Pinterest
+                  </button>
+                  
+                  <div className="relative flex items-center py-2">
+                    <div className="flex-grow border-t border-[#E5E1DA]"></div>
+                    <span className="flex-shrink-0 mx-4 text-[#999] text-xs uppercase tracking-wider">Or</span>
+                    <div className="flex-grow border-t border-[#E5E1DA]"></div>
+                  </div>
+                  
+                  <button 
+                    onClick={() => handleDownload(sharingOutfit)}
+                    className="w-full mt-4 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#1A1A1A] text-white hover:bg-black transition-colors font-medium"
+                  >
+                    <Download size={18} /> {t.download}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
 
       {/* Footer */}
