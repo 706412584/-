@@ -1,0 +1,7 @@
+{
+  "name": "Virtual Stylist",
+  "description": "Upload a photo of any clothing item and get 3 AI-generated outfit ideas (Casual, Business, Night Out) with flat-lay visualizations.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
